@@ -46,20 +46,26 @@ class GroupByAvgOla(OLA):
         super().__init__(widget)
         self.groupby_col = groupby_col
         self.mean_col = mean_col
-        self.grouped_data = {}
+        self.grouped_mean = {}
+        self.grouped_counts ={}
 
     def process_slice(self, df_slice: pd.DataFrame) -> None:
         grouped_df = df_slice.groupby(self.groupby_col)
         for group, group_df in grouped_df:
-            if group in self.grouped_data:
-                self.grouped_data[group][0] += group_df.sum()[self.mean_col]
-                self.grouped_data[group][1] += group_df.count()[self.mean_col]
-            else:
-                self.grouped_data[group] = [group_df.sum()[self.mean_col], group_df.count()[self.mean_col]]
+            grouped_sum = sum(group_df[self.mean_col].values)
+            grouped_count = len(group_df[self.mean_col].values)
+
+            if group not in self.grouped_mean:
+                self.grouped_mean[group]= 0
+                self.grouped_counts[group]= 0
+            
+            self.grouped_mean[group]+= grouped_sum
+            self.grouped_counts[group]+=grouped_count
         
-        groups = list(self.grouped_data.keys())
-        values = [(self.grouped_data[group][0] / self.grouped_data[group][1]) for group in groups]
-        self.update_widget(groups, values)
+        grouped_keys = list(self.grouped_data.keys())
+        grouped_mean= [(self.grouped_means[group] / 
+                   self.grouped_counts[group]) if self.group_counts[group] > 0 else 0 for group in grouped_keys]
+        self.update_widget(grouped_keys, grouped_mean)
 
 class GroupBySumOla(OLA):
     def __init__(self, widget: go.FigureWidget, original_df_num_rows: int, groupby_col: str, sum_col: str):
@@ -68,18 +74,23 @@ class GroupBySumOla(OLA):
         self.groupby_col = groupby_col
         self.sum_col = sum_col
         self.grouped_sums = {}
+        self.count = 0
+        
 
     def process_slice(self, df_slice: pd.DataFrame) -> None:
         grouped_df = df_slice.groupby(self.groupby_col)
         for group, group_df in grouped_df:
-            if group in self.grouped_sums:
-                self.grouped_sums[group] += group_df.sum()[self.sum_col]
-            else:
-                self.grouped_sums[group] = group_df.sum()[self.sum_col]
-        
-        groups = list(self.grouped_sums.keys())
-        values = [self.grouped_sums[group] for group in groups]
-        self.update_widget(groups, values)
+            grouped_sum = sum(group_df[self.sum_col].values)
+
+            if group not in self.grouped_sums:
+                self.grouped_sums[group] = 0
+            self.grouped_sums[group] += grouped_sum
+
+        self.count+= len(df_slice)
+        scale = self.original_df_num_rows / self.count
+        grouped_key = list(self.grouped_sums.keys())
+        grouped_sum = [self.grouped_sums[group]*scale for group in grouped_key]
+        self.update_widget(grouped_key, grouped_sum)
 
 class GroupByCountOla(OLA):
     def __init__(self, widget: go.FigureWidget, original_df_num_rows: int, groupby_col: str, count_col: str):
@@ -88,18 +99,24 @@ class GroupByCountOla(OLA):
         self.groupby_col = groupby_col
         self.count_col = count_col
         self.grouped_counts = {}
+        self.count =0
 
     def process_slice(self, df_slice: pd.DataFrame) -> None:
         grouped_df = df_slice.groupby(self.groupby_col)
         for group, group_df in grouped_df:
-            if group in self.grouped_counts:
-                self.grouped_counts[group] += group_df[self.count_col].count()
-            else:
-                self.grouped_counts[group] = group_df[self.count_col].count()
-        
-        groups = list(self.grouped_counts.keys())
-        values = list(self.grouped_counts.values())
-        self.update_widget(groups, values)
+            count_values = group_df[self.count_col].dropna().values
+            grouped_count = len(count_values)
+                
+            if group not in self.grouped_counts:
+                self.grouped_counts [group] = 0
+
+            self.grouped_counts[group] += grouped_count
+
+        self.count+= len(df_slice)   
+        scale = self.original_df_num_rows / self.count
+        grouped_key = list(self.grouped_counts.keys())
+        grouped_counts = list(x*scale for x in self.grouped_counts.values())
+        self.update_widget(grouped_key, grouped_counts)
 
 class FilterDistinctOla(OLA):
     def __init__(self, widget: go.FigureWidget, filter_col: str, filter_value: Any, distinct_col: str):
@@ -111,8 +128,9 @@ class FilterDistinctOla(OLA):
 
     def process_slice(self, df_slice: pd.DataFrame) -> None:
         filtered_df = df_slice[df_slice[self.filter_col] == self.filter_value]
-        for index, row in filtered_df.iterrows():
-            self.hll.add(str(row[self.distinct_col]))
+        distinct_values = filtered_df[self.distinct_col].astype(str).values
+        for data in distinct_values: 
+            self.hll.add(data)
 
         distinct_count = self.hll.cardinality()  # Corrected here
         self.update_widget([""], [distinct_count])
