@@ -63,8 +63,8 @@ class GroupByAvgOla(OLA):
             self.grouped_counts[group]+=grouped_count
         
         grouped_keys = list(self.grouped_mean.keys())
-        grouped_mean= [(self.grouped_means[group] / 
-                   self.grouped_counts[group]) if self.group_counts[group] > 0 else 0 for group in grouped_keys]
+        grouped_mean= [(self.grouped_mean[group] / 
+                   self.grouped_counts[group]) if self.grouped_counts[group] > 0 else 0 for group in grouped_keys]
         self.update_widget(grouped_keys, grouped_mean)
 
 class GroupBySumOla(OLA):
